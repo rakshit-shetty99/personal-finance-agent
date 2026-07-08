@@ -1,9 +1,7 @@
 from sqlalchemy import (
-    create_engine, Column, Integer, String,
-    Float, Date, DateTime, ForeignKey, Text
+    create_engine, Column, Integer, String, Float, Text
 )
-from sqlalchemy.orm import declarative_base, relationship
-from sqlalchemy.sql import func
+from sqlalchemy.orm import declarative_base
 from dotenv import load_dotenv
 import os
 
@@ -16,81 +14,73 @@ class Account(Base):
     __tablename__ = "accounts"
 
     id             = Column(Integer, primary_key=True)
-    name           = Column(String, nullable=False)
-    account_type   = Column(String, nullable=False)   # savings / credit / investment
-    bank           = Column(String, nullable=False)
-    masked_number  = Column(String)                   # last 4 digits only
-    created_at     = Column(DateTime, server_default=func.now())
-
-    transactions   = relationship("Transaction", back_populates="account")
-
-
-class Category(Base):
-    __tablename__ = "categories"
-
-    id          = Column(Integer, primary_key=True)
-    name        = Column(String, nullable=False)
-    parent_id   = Column(Integer, ForeignKey("categories.id"), nullable=True)
-    is_custom   = Column(Integer, default=0)          # 0 = system, 1 = user-defined
-    icon        = Column(String, default="💰")
-
-    transactions = relationship("Transaction", back_populates="category")
+    name           = Column(String, nullable=False)   # "Kotak Savings", "HDFC Regalia Gold"
+    type           = Column(String, nullable=False)   # 'bank' | 'credit_card'
+    institution    = Column(String)                   # "Kotak", "HDFC"
+    parser_adapter = Column(String)                   # registry key, e.g. 'kotak_csv'
+    billing_day    = Column(Integer)                  # CC only
+    due_day        = Column(Integer)                  # CC only
+    is_active      = Column(Integer, default=1)
+    created_at     = Column(String)
 
 
 class Transaction(Base):
     __tablename__ = "transactions"
 
-    id               = Column(Integer, primary_key=True)
-    date             = Column(Date, nullable=False)
-    description      = Column(String, nullable=False)
-    raw_description  = Column(String)
-    amount           = Column(Float, nullable=False)
-    txn_type         = Column(String, nullable=False)  # debit / credit
-    category_id      = Column(Integer, ForeignKey("categories.id"), nullable=True)
-    account_id       = Column(Integer, ForeignKey("accounts.id"), nullable=True)
-    source           = Column(String)                  # kotak_csv / card_pdf
-    confidence       = Column(Float, default=0.0)      # AI categorisation score
-    is_verified      = Column(Integer, default=0)      # 1 = user confirmed category
-    hash             = Column(String, unique=True)     # deduplication key
-    created_at       = Column(DateTime, server_default=func.now())
-
-    account          = relationship("Account", back_populates="transactions")
-    category         = relationship("Category", back_populates="transactions")
+    id              = Column(Integer, primary_key=True)
+    account_id      = Column(Integer)
+    txn_date        = Column(String, nullable=False)  # ISO date string
+    description     = Column(String)
+    raw_description = Column(String)                  # original narration, audit trail
+    amount          = Column(Float, nullable=False)   # SIGNED: negative = outflow
+    category        = Column(String)                  # plain text, driven by category_rules
+    source_file     = Column(String)
+    dedup_hash      = Column(String, unique=True)
+    created_at      = Column(String)
 
 
-class Budget(Base):
-    __tablename__ = "budgets"
+class Commitment(Base):
+    __tablename__ = "commitments"
 
-    id          = Column(Integer, primary_key=True)
-    category_id = Column(Integer, ForeignKey("categories.id"), nullable=False)
-    month       = Column(Integer, nullable=False)
-    year        = Column(Integer, nullable=False)
-    limit_amt   = Column(Float, nullable=False)
-    created_at  = Column(DateTime, server_default=func.now())
+    id                = Column(Integer, primary_key=True)
+    name              = Column(String, nullable=False)  # "Home Loan EMI", "Netflix"
+    type              = Column(String, nullable=False)  # emi|rent|cc_bill|subscription|adhoc
+    amount            = Column(Float)                    # NULL = variable (cc_bill)
+    frequency         = Column(String, nullable=False)   # monthly|annual|one_time
+    due_day           = Column(Integer)
+    due_date          = Column(String)
+    start_date        = Column(String)
+    end_date          = Column(String)
+    source_account_id = Column(Integer)
+    linked_card_id    = Column(Integer)
+    is_active         = Column(Integer, default=1)
+    notes             = Column(Text)
 
 
-class InsightCache(Base):
-    __tablename__ = "insights_cache"
+class Statement(Base):
+    __tablename__ = "statements"
 
     id           = Column(Integer, primary_key=True)
-    insight_type = Column(String)
-    period       = Column(String)
-    content_json = Column(Text)
-    created_at   = Column(DateTime, server_default=func.now())
+    account_id   = Column(Integer)
+    file_name    = Column(String)
+    period_start = Column(String)
+    period_end   = Column(String)
+    txn_count    = Column(Integer)
+    imported_at  = Column(String)
+    status       = Column(String)   # imported | failed | partial
+
+
+class CategoryRule(Base):
+    __tablename__ = "category_rules"
+
+    id            = Column(Integer, primary_key=True)
+    match_pattern = Column(String, nullable=False)
+    category      = Column(String, nullable=False)
+    priority      = Column(Integer, default=100)
+    is_active     = Column(Integer, default=1)
 
 
 def get_engine():
     db_path = os.getenv("DB_PATH", "data/finance.db")
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     return create_engine(f"sqlite:///{db_path}", echo=False)
-
-
-def init_db():
-    engine = get_engine()
-    Base.metadata.create_all(engine)
-    print("Database initialised at:", os.getenv("DB_PATH", "data/finance.db"))
-    return engine
-
-
-if __name__ == "__main__":
-    init_db()

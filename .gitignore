@@ -2,6 +2,9 @@
 .env
 data/
 *.db
+*.sqlite
+*.csv
+statements/
 
 # Python
 venv/
