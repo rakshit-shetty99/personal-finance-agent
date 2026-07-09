@@ -40,16 +40,17 @@ row = df[df["name"] == selected].iloc[0]
 with st.form("edit_account"):
     col1, col2 = st.columns(2)
     with col1:
+        import pandas as pd
         billing = st.number_input(
             "Billing day (credit cards only)",
             min_value=0, max_value=31,
-            value=int(row["billing_day"]) if row["billing_day"] else 0,
+            value=int(row["billing_day"]) if pd.notna(row["billing_day"]) else 0,
             help="0 = not applicable",
         )
         due = st.number_input(
             "Due day (credit cards only)",
             min_value=0, max_value=31,
-            value=int(row["due_day"]) if row["due_day"] else 0,
+            value=int(row["due_day"]) if pd.notna(row["due_day"]) else 0,
         )
     with col2:
         adapter = st.text_input(
